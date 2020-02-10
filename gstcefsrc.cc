@@ -21,6 +21,8 @@ GST_DEBUG_CATEGORY_STATIC (cef_src_debug);
 #define DEFAULT_FPS_D 1
 #define DEFAULT_URL "https://www.google.com"
 
+#define ENABLE_AUDIO 0
+
 enum
 {
   PROP_0,
@@ -55,7 +57,7 @@ class RenderHandler : public CefRenderHandler
 
     void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect) override
     {
-	  GST_LOG_OBJECT(element, "getting view rect");
+      GST_LOG_OBJECT(element, "getting view rect");
       GST_OBJECT_LOCK (element);
       rect = CefRect(0, 0, element->vinfo.width ? element->vinfo.width : DEFAULT_WIDTH, element->vinfo.height ? element->vinfo.height : DEFAULT_HEIGHT);
       GST_OBJECT_UNLOCK (element);
@@ -85,6 +87,7 @@ class RenderHandler : public CefRenderHandler
     IMPLEMENT_REFCOUNTING(RenderHandler);
 };
 
+#if ENABLE_AUDIO
 class AudioHandler : public CefAudioHandler
 {
   public:
@@ -180,31 +183,42 @@ class AudioHandler : public CefAudioHandler
     std::map<int, int> streamChannels;
     IMPLEMENT_REFCOUNTING(AudioHandler);
 };
+#endif
 
 class BrowserClient : public CefClient
 {
   public:
-
+#if ENABLE_AUDIO
     BrowserClient(CefRefPtr<CefRenderHandler> rptr, CefRefPtr<CefAudioHandler> aptr) :
         render_handler(rptr),
         audio_handler(aptr)
     {
     }
+#else
+    BrowserClient(CefRefPtr<CefRenderHandler> rptr) :
+        render_handler(rptr)
+    {
+    }
+#endif
 
     virtual CefRefPtr<CefRenderHandler> GetRenderHandler() override
     {
       return render_handler;
     }
 
+#if ENABLE_AUDIO
     virtual CefRefPtr<CefAudioHandler> GetAudioHandler() override
     {
       return audio_handler;
     }
+#endif
 
   private:
 
     CefRefPtr<CefRenderHandler> render_handler;
+#if ENABLE_AUDIO
     CefRefPtr<CefAudioHandler> audio_handler;
+#endif
 
     IMPLEMENT_REFCOUNTING(BrowserClient);
 };
@@ -290,7 +304,9 @@ gst_cef_src_start(GstBaseSrc *base_src)
 
   CefSettings settings;
   CefRefPtr<RenderHandler> renderHandler = new RenderHandler(src);
+#if ENABLE_AUDIO
   CefRefPtr<AudioHandler> audioHandler = new AudioHandler(src);
+#endif
   CefRefPtr<App> app;
   CefRefPtr<BrowserClient> browserClient;
   CefRefPtr<CefBrowser> browser;
@@ -314,7 +330,12 @@ gst_cef_src_start(GstBaseSrc *base_src)
   }
 
   window_info.SetAsWindowless(0);
+
+#if ENABLE_AUDIO
   browserClient = new BrowserClient(renderHandler, audioHandler);
+#else
+  browserClient = new BrowserClient(renderHandler);
+#endif
 
   /* We create the browser outside of the lock because it will call the paint
    * callback synchronously */
